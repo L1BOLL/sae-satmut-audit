@@ -2,6 +2,10 @@
 
 **A saturation-mutagenesis audit of sparse-autoencoder features in a genomic foundation model.**
 
+Code for *Sparsity, Not Alignment: How a Standard Interpretability Test Manufactures Discovery in a
+Genomic Foundation Model* (NeurIPS 2026 Workshop: Interpretability for Discovery). See
+[Citation](#citation).
+
 This repository trains sparse autoencoders (SAEs) on the residual stream of genomic foundation
 models (HyenaDNA, Caduceus) and tests, per feature, whether its in-silico-mutagenesis sensitivity
 aligns with measured per-base-pair effects from saturation-mutagenesis MPRA (Kircher et al. 2019),
@@ -27,7 +31,8 @@ underpowered (Wilcoxon p = 0.55). "Not established" is the defensible statement.
 
 The four diagnostics that expose this — symmetry, mirror-FDR, shift-vs-spread, and scaling with
 dictionary size — are in `scripts/22_signal_audit.py`, and each is a few lines on top of an existing
-pipeline.
+pipeline. The sparsity mechanism (tail membership vs. locus coverage, and a zero-signal simulation)
+is in `scripts/23_mechanism.py`; the studentised repair is in `scripts/24_calibrate.py`.
 
 ---
 
@@ -63,9 +68,12 @@ reports_caduceus/    figures for the Caduceus run
 | `20_matchednull.py` | sparsity-matched null: random directions thresholded to a real feature's firing density |
 | `21_crossfamily_locus.py` | TopK vs Gated agreement, recomputed on independent loci |
 | `22_signal_audit.py` | one-sidedness checks: tail symmetry, mirror-FDR, shift-vs-spread, scaling with m |
+| `23_mechanism.py` | the mechanism: tail membership vs. number of active loci, and a zero-signal simulation |
+| `24_calibrate.py` | the repair: studentised z_f = A_f / SE_f, tail fractions before and after |
 | `locus_numbers.py` | every reported number at both element and locus aggregation |
 | `dictsweep_table.py` | sweep summary at both aggregation levels |
-| `regen_fig1.py` | regenerates Figure 1 |
+| `fig_signal_audit.py` | Figure 1 of the workshop paper (both tails; scaling with m), at print size |
+| `regen_fig1.py` | regenerates Figure 1 of the earlier (pre-audit) manuscript |
 
 **Unit of analysis.** The Kircher panel reports several conditions per element over byte-identical
 sequence, so its 29 rows are 21 independent loci. `data.locus_groups` groups by assayed sequence;
@@ -100,6 +108,13 @@ DNA_INTERP_CONFIG=config/real.yaml python scripts/13_subsample.py            # n
 
 # the cross-model (Caduceus) replication
 DNA_INTERP_CONFIG=config/caduceus.yaml python scripts/run_pipeline.py n_seeds=3
+
+# the audit (workshop paper); 23, 24 and the figure read cached artifacts only, no GPU
+DNA_INTERP_CONFIG=config/real.yaml python scripts/16_dictsweep.py            # dictionary-size sweep
+DNA_INTERP_CONFIG=config/real.yaml python scripts/22_signal_audit.py         # diagnostics (1)-(4)
+DNA_INTERP_CONFIG=config/real.yaml python scripts/23_mechanism.py            # sparsity mechanism
+DNA_INTERP_CONFIG=config/real.yaml python scripts/24_calibrate.py            # studentised repair
+DNA_INTERP_CONFIG=config/real.yaml python scripts/fig_signal_audit.py        # Figure 1
 ```
 Everything is config-driven with fixed seeds; activations/SAEs/ISM are cached to disk. Set
 `DNA_INTERP_CONFIG` to pick the config; the paths in `config/*.yaml` are repo-relative placeholders —
@@ -115,11 +130,18 @@ point `paths.*` and `corpus.genome_fasta/ccre_bed/gencode_gtf` at your data.
 - Single question, single model family: SAEs on a genomic foundation model, tested against
   saturation-mutagenesis ground truth. Out of scope: model zoo, genome-wide atlas, steering/design.
 - **Disclosure:** implementation and analysis were carried out with assistance from an LLM coding
-  assistant; all scientific decisions, controls and interpretation are the authors'.
+  assistant; all scientific decisions, controls and interpretation are the author's.
 - **License:** MIT (see `LICENSE`).
 
-## Anonymity
+## Citation
 
-This repository accompanies a double-blind submission. Author names, affiliations, prior-version
-citations and venue references have been removed. It will be replaced by a non-anonymous version
-after review.
+```bibtex
+@inproceedings{zerta2026sparsity,
+  title     = {Sparsity, Not Alignment: How a Standard Interpretability Test Manufactures
+               Discovery in a Genomic Foundation Model},
+  author    = {Zerta, Youssef Naciri},
+  booktitle = {NeurIPS 2026 Workshop on Interpretability for Discovery},
+  year      = {2026},
+  url       = {https://github.com/L1BOLL/sae-satmut-audit}
+}
+```
