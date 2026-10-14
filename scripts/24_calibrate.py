@@ -72,6 +72,12 @@ def main():
     hi, lo = np.nanpercentile(N.A_f, 95), np.nanpercentile(N.A_f, 5)
     up, dn = frac(R.A_f.to_numpy(), hi, lo)
     print(f"  thresholds {lo:+.4f} / {hi:+.4f} | above {up:.3f}  below {dn:.3f}  (excess {up-dn:+.3f})")
+    # Units on <3 loci get no bootstrap SE, so z is NaN for them and AFTER is computed without
+    # them. They are the sparsest, most extreme units, so compare BEFORE on the same set too.
+    has_se = ~R.z.isna()
+    mup, mdn = frac(R.A_f[has_se].to_numpy(), hi, lo)
+    print(f"  same {int(has_se.sum())} units that have an SE (>=3 loci): "
+          f"above {mup:.3f}  below {mdn:.3f}  ({int((~has_se).sum())} units on <3 loci excluded)")
 
     print("\n=== AFTER: threshold on z = A_f / bootstrap SE, against the same null studentised ===")
     zhi, zlo = np.nanpercentile(N.z, 95), np.nanpercentile(N.z, 5)
@@ -84,23 +90,37 @@ def main():
         ok = ~np.isnan(v)
         print(f"  Spearman(n_loci, |{lab.strip()}|) = "
               f"{causal.spearman_rho(nl[ok], np.abs(v[ok])):+.3f}")
+    rho_A_matched = causal.spearman_rho(R.n_loci[has_se], np.abs(R.A_f[has_se]))
+    print(f"  Spearman(n_loci, |A_f|) on the same units as z = {rho_A_matched:+.3f}")
 
-    print("\n=== tail fraction by coverage, after calibration ===")
+    # 1-2 loci is split off from 3-8 because those units have no SE: every bin from 3 up then
+    # compares A_f and z on exactly the same units.
+    print("\n=== tail fraction by coverage, before (A_f) and after (z) calibration ===")
+    print(f"  {'n_loci':>7} {'units':>6} {'sd(A_f)':>8}   A_f above / below   z above / below")
     by_cov = []
-    for a, b in [(1, 8), (9, 12), (13, 16), (17, 19), (20, 21)]:
+    for a, b in [(1, 2), (3, 8), (9, 12), (13, 16), (17, 19), (20, 21)]:
         m = R[(R.n_loci >= a) & (R.n_loci <= b)]
         if len(m) < 20: continue
-        u, w = frac(m.z.to_numpy(), zhi, zlo)
-        by_cov.append((f"{a}-{b}", len(m), u, w))
-        print(f"  n_loci {a:>2}-{b:<2}  n={len(m):>4}   above {u:.3f}  below {w:.3f}  total {u+w:.3f}")
+        ua, wa = frac(m.A_f.to_numpy(), hi, lo)
+        n_se = int(m.z.notna().sum())                 # units with a bootstrap SE (>=3 loci)
+        uz, wz = frac(m.z.to_numpy(), zhi, zlo) if n_se else (float("nan"), float("nan"))
+        by_cov.append({"bin": f"{a}-{b}", "n": len(m), "sd_A": float(m.A_f.std()),
+                       "A_above": ua, "A_below": wa, "n_with_se": n_se,
+                       "z_above": uz, "z_below": wz})
+        print(f"  {a:>3}-{b:<3} {len(m):>6} {m.A_f.std():>8.4f}   {ua:>7.3f} / {wa:.3f}   "
+              f"{uz:>7.3f} / {wz:.3f}")
 
     out = {"layer": L, "n_boot": B,
            "before": {"above": up, "below": dn},
+           "before_same_units": {"above": mup, "below": mdn, "n_units": int(has_se.sum()),
+                                 "n_excluded_lt3_loci": int((~has_se).sum()),
+                                 "sd_A": float(R.A_f[has_se].std())},
            "after": {"above": zup, "below": zdn},
            "spearman_nloci_absA": causal.spearman_rho(R.n_loci, np.abs(R.A_f)),
+           "spearman_nloci_absA_same_units": float(rho_A_matched),
            "spearman_nloci_absZ": float(causal.spearman_rho(
                R.n_loci[~R.z.isna()], np.abs(R.z[~R.z.isna()]))),
-           "after_by_coverage": by_cov}
+           "by_coverage": by_cov}
     (art / f"calibrate_layer{L}.json").write_text(json.dumps(out, indent=2))
     print(f"wrote {art / f'calibrate_layer{L}.json'}")
 
